@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Greedy Best-First vs A* Visualizer</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light;--bg:#f6f5f1;--fg:#1c1b1a;--mut:#6b6a66;--card:#fff;--bd:#dcdad3;--ac:#2563eb}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#16171a;--fg:#ececea;--mut:#9a9994;--card:#202226;--bd:#33363c;--ac:#60a5fa}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#16171a;--fg:#ececea;--mut:#9a9994;--card:#202226;--bd:#33363c;--ac:#60a5fa}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:16px}
+main{max-width:1100px;margin:0 auto}
+h1{font-size:20px;margin:0 0 12px}
+.tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+button,select{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:6px 12px;cursor:pointer}
+button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;color:var(--mut)}
+.bar input[type=range]{width:120px}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:720px){.split{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:10px}
+.card h2{font-size:15px;margin:0 0 6px}
+canvas{width:100%;height:auto;display:block;border-radius:6px;background:#fafaf7}
+.stats{display:flex;gap:16px;margin-top:6px;font-variant-numeric:tabular-nums}
+.stats b{font-size:17px}
+.legend{font-size:13px;color:var(--mut);margin-top:10px}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin:0 4px 0 10px;vertical-align:-1px}
+#msg,#hmsg{margin-top:10px;font-weight:600}
+table{border-collapse:collapse;width:100%;margin-top:10px;font-variant-numeric:tabular-nums}th,td{border-bottom:1px solid var(--bd);padding:5px 8px;text-align:right}th:first-child,td:first-child{text-align:left}th{color:var(--mut);font-weight:600}td.w{color:#059669;font-weight:700}tr.sec td{color:var(--mut);font-size:13px;text-align:left;padding-top:12px}
+.hide{display:none}
+</style></head><body><main>
+<h1>Greedy Best-First vs A* Visualizer</h1>
+
+<section id="p1">
+<div class="bar"><button id="go">Start</button><button id="nm">New maze</button><button id="stp">Step</button><button id="rs">Reset</button>
+<label>Speed <input id="sp" type="range" min="1" max="12" value="3"></label></div>
+<div class="split">
+<div class="card"><h2>Greedy Best-First <span style="color:var(--mut);font-weight:400">f = h</span></h2><canvas id="c1" width="620" height="420"></canvas>
+<div class="stats"><span>Expanded <b id="e1">0</b></span><span>Frontier <b id="f1">0</b></span><span>Path cost <b id="p1c">–</b></span><span>Time <b id="tm1">0</b> ms</span></div></div>
+<div class="card"><h2>A* <span style="color:var(--mut);font-weight:400">f = g + h</span></h2><canvas id="c2" width="620" height="420"></canvas>
+<div class="stats"><span>Expanded <b id="e2">0</b></span><span>Frontier <b id="f2">0</b></span><span>Path cost <b id="p2c">–</b></span><span>Time <b id="tm2">0</b> ms</span></div></div>
+</div>
+<div class="legend"><i style="background:#34d399"></i>frontier<i style="background:#9ec5fe"></i>expanded<i style="background:#f59e0b"></i>final path<i style="background:#ef4444"></i>start / goal. Heuristic: Manhattan distance.</div>
+<div id="msg"></div>
+<table><thead><tr><th>Performance comparison</th><th>Greedy</th><th>A*</th></tr></thead><tbody id="cb"></tbody></table>
+</section>
+
+</main>
+<script>
+const $=id=>document.getElementById(id);
+
+/* ---------- Maze search ---------- */
+const W=31,H=21,CS=20,S=1*W+1,G=(H-2)*W+(W-2);
+let M,A,B,run=false;
+function maze(){
+  M=new Array(W*H).fill(1);
+  const st=[S];M[S]=0;
+  while(st.length){const c=st[st.length-1],x=c%W,y=(c/W)|0,nb=[];
+    for(const[dx,dy]of[[2,0],[-2,0],[0,2],[0,-2]]){const nx=x+dx,ny=y+dy;if(nx>0&&ny>0&&nx<W-1&&ny<H-1&&M[ny*W+nx])nb.push([nx,ny,dx/2,dy/2])}
+    if(!nb.length){st.pop();continue}
+    const[nx,ny,hx,hy]=nb[Math.random()*nb.length|0];M[ny*W+nx]=0;M[(y+hy)*W+x+hx]=0;st.push(ny*W+nx)}
+  for(let k=0;k<45;k++){const x=1+Math.random()*(W-2)|0,y=1+Math.random()*(H-2)|0;M[y*W+x]=0}
+  resetS()}
+const hh=i=>Math.abs(i%W-(W-2))+Math.abs(((i/W)|0)-(H-2));
+function mk(a){return{t:0,a,open:new Set([S]),closed:new Set(),g:{[S]:0},par:{},done:false,exp:0,path:null,cost:null}}
+function step(s){const t=performance.now();step0(s);s.t+=performance.now()-t}
+function step0(s){
+  if(s.done)return;
+  if(!s.open.size){s.done=true;return}
+  let b=-1,bk=1e9,bh=1e9;
+  for(const i of s.open){const h=hh(i),k=s.a?s.g[i]+h:h;if(k<bk||(k==bk&&h<bh)){b=i;bk=k;bh=h}}
+  s.open.delete(b);s.closed.add(b);s.exp++;
+  if(b==G){s.done=true;const p=[];for(let c=G;c!=null;c=s.par[c])p.push(c);s.path=p;s.cost=p.length-1;return}
+  const x=b%W,y=(b/W)|0;
+  for(const[dx,dy]of[[1,0],[-1,0],[0,1],[0,-1]]){const n=(y+dy)*W+x+dx;if(M[n]||s.closed.has(n))continue;
+    const ng=s.g[b]+1;
+    if(!(n in s.g)||(s.a&&ng<s.g[n])){s.g[n]=ng;s.par[n]=b;s.open.add(n)}}
+}
+function draw(cv,s){
+  const c=cv.getContext('2d');c.fillStyle='#fafaf7';c.fillRect(0,0,cv.width,cv.height);
+  for(let i=0;i<W*H;i++){const x=i%W*CS,y=((i/W)|0)*CS;
+    if(M[i])c.fillStyle='#1f2937';else if(s.open.has(i))c.fillStyle='#34d399';else if(s.closed.has(i))c.fillStyle='#9ec5fe';else continue;
+    c.fillRect(x,y,CS,CS)}
+  if(s.path){c.fillStyle='#f59e0b';for(const i of s.path)c.fillRect(i%W*CS+3,((i/W)|0)*CS+3,CS-6,CS-6)}
+  c.fillStyle='#ef4444';for(const i of[S,G])c.fillRect(i%W*CS+2,((i/W)|0)*CS+2,CS-4,CS-4)}
+function ui(){
+  draw($('c1'),A);draw($('c2'),B);
+  $('e1').textContent=A.exp;$('e2').textContent=B.exp;$('f1').textContent=A.open.size;$('f2').textContent=B.open.size;
+  $('p1c').textContent=A.cost??'–';$('p2c').textContent=B.cost??'–';$('tm1').textContent=A.t.toFixed(2);$('tm2').textContent=B.t.toFixed(2);
+  if(A.done&&B.done){run=false;$('go').textContent='Start';logRun();
+    $('msg').textContent=`Greedy expanded ${A.exp} nodes, path cost ${A.cost}. A* expanded ${B.exp} nodes, path cost ${B.cost}. `+(A.cost>B.cost?`A* found a path ${A.cost-B.cost} shorter (optimal).`:'Both found an optimal path on this maze.')}}
+let hist=[];
+function logRun(){if(A.logged)return;A.logged=1;hist.push({ge:A.exp,gc:A.cost,gt:A.t,ae:B.exp,ac:B.cost,at:B.t});renderCmp()}
+function renderCmp(){
+  const n=hist.length;if(!n){$('cb').innerHTML='<tr><td colspan=3 style="text-align:left;color:var(--mut)">Run both searches to see the comparison.</td></tr>';return}
+  const l=hist[n-1],av=k=>hist.reduce((a,r)=>a+r[k],0)/n;
+  const row=(m,g,a,d=0)=>`<tr><td>${m}</td><td class="${g<a?'w':''}">${g.toFixed(d)}</td><td class="${a<g?'w':''}">${a.toFixed(d)}</td></tr>`;
+  const opt=hist.filter(r=>r.gc==r.ac).length;
+  $('cb').innerHTML='<tr class="sec"><td colspan=3>Latest run (green = lower is better)</td></tr>'+row('Nodes expanded',l.ge,l.ae)+row('Compute time (ms)',l.gt,l.at,2)+row('Path cost',l.gc,l.ac)
+   +`<tr class="sec"><td colspan=3>Average over ${n} completed run${n>1?'s':''} (new mazes or re-runs)</td></tr>`+row('Avg nodes expanded',av('ge'),av('ae'),1)+row('Avg compute time (ms)',av('gt'),av('at'),2)+row('Avg path cost',av('gc'),av('ac'),1)
+   +`<tr><td>Optimal path found</td><td>${opt}/${n}</td><td>${n}/${n}</td></tr>`}
+function resetS(){A=mk(0);B=mk(1);run=false;$('go').textContent='Start';$('msg').textContent='';ui();renderCmp()}
+function loop(){if(run){const n=+$('sp').value;for(let k=0;k<n;k++){step(A);step(B)}ui()}requestAnimationFrame(loop)}
+$('go').onclick=()=>{if(A.done&&B.done)resetS();run=!run;$('go').textContent=run?'Pause':'Resume'};
+$('nm').onclick=maze;$('rs').onclick=resetS;
+$('stp').onclick=()=>{run=false;$('go').textContent='Resume';step(A);step(B);ui()};
+maze();loop();
+
+</script></body></html>
